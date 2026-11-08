@@ -1,0 +1,87 @@
+<?php
+session_start();
+require_once('../model/vehicleModel.php');            
+
+if (!isset($_SESSION['status']) || $_SESSION['status'] !== true) {
+    echo json_encode(['status' => 'error', 'message' => 'User not logged in']);
+    exit;
+}
+
+
+function h($s) { return htmlspecialchars($s ?? '', ENT_QUOTES, 'UTF-8'); }
+
+
+$typeId    = $_POST['type'] ?? ''; 
+$featureId = $_POST['feature'] ?? '';
+$priceStr  = $_POST['price'] ?? '';
+$page      = max(1, (int)($_POST['page'] ?? 1));
+$perPage   = 12; 
+
+
+$errors = [];
+if ($priceStr !== '' && !preg_match('/^\d+\-\d+$/', $priceStr)) {
+    $errors['price'] = 'Invalid price range (e.g., 2000-5000).';
+}
+if ($typeId !== '' && !ctype_digit((string)$typeId)) {
+    $errors['type'] = 'Invalid vehicle type.';
+}
+if ($featureId !== '' && !ctype_digit((string)$featureId)) {
+    $errors['feature'] = 'Invalid feature.';
+}
+
+
+if (!empty($errors)) {
+    echo json_encode(['status' => 'error', 'message' => $errors]);
+    exit;
+}
+
+
+$filters = [];
+if ($typeId !== '') $filters['type_id'] = (int)$typeId;
+if ($featureId !== '') $filters['feature_id'] = (int)$featureId;
+if ($priceStr !== '') $filters['price'] = $priceStr;
+
+
+$total = countVehiclesFiltered($filters);
+$totalPages = ceil($total / $perPage);
+
+
+if ($page > $totalPages) $page = $totalPages;
+
+
+$vehicles = getVehiclesFiltered($filters, $page, $perPage);
+
+
+$vehicleHtml = '';
+foreach ($vehicles as $v) {
+    $vehicleHtml .= '<div class="vehicle">';
+    
+    $imagePath = !empty($v['img']) ? '../' . h($v['img']) : '../asset/placeholder-vehicle.jpg';  
+    $vehicleHtml .= '<img src="' . $imagePath . '" alt="' . h($v['make'] . ' ' . $v['model']) . '">';
+    $vehicleHtml .= '<h3>' . h($v['make'] . ' ' . $v['model']) . ' (' . h($v['model_year']) . ')</h3>';
+    $vehicleHtml .= '<p>Type: ' . h($v['type_name']) . '</p>';
+    $vehicleHtml .= '<p>Rate: ' . h(number_format((float)$v['daily_rate'], 2)) . '</p>';
+    $vehicleHtml .= '<p>' . ($v['seats'] ? h($v['seats']) . ' seats • ' : '') . h($v['transmission']) . ' ' . ($v['fuel_type'] ? ' • ' . h($v['fuel_type']) : '') . '</p>';
+    $vehicleHtml .= '<button type="button" class="btn" onclick="window.location.href=\'booking_calendar.php?vehicle_id=' . (int)$v['id'] . '\'">Check Availability</button>';
+    $vehicleHtml .= '</div>';
+}
+
+
+$paginationHtml = '';
+for ($p = 1; $p <= $totalPages; $p++) {
+    if ($p == $page) {
+        $paginationHtml .= '<span class="active">' . $p . '</span>';
+    } else {
+        $paginationHtml .= '<a href="#" onclick="submitFilters()">' . $p . '</a>';
+    }
+}
+
+
+echo json_encode([
+    'status' => 'success',
+    'vehicles' => $vehicleHtml,
+    'pagination' => $paginationHtml,
+    'total' => $total,
+    'totalPages' => $totalPages
+]);
+?>
